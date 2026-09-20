@@ -170,34 +170,57 @@ func (s *dockerIdleSweeper) ttlFor(summary RemoteSandboxSummary) time.Duration {
 	return s.ttl
 }
 
-// lastActivity returns when the container last ran a command, falling back to
-// when it started for a sandbox that has not executed anything yet.
+// lastActivity returns when the container last ran a command, never earlier
+// than the container itself started.
 //
 // The marker lives inside the container and has to be writable by the
 // unprivileged sandbox account, so its mtime is attacker-influenced: a script
 // can `touch -d` it. A timestamp in the future is the one form of that which
-// would disable reclamation permanently, so it is refused outright and the
-// container falls back to its start time. Backdating only makes a sandbox look
-// idle sooner, which costs the container that did it and nothing else.
+// would disable reclamation permanently, so it is refused outright. Backdating
+// only makes a sandbox look idle sooner, which costs the container that did it
+// and nothing else — up to, but not past, its own start time.
+//
+// That floor is the load-bearing part and not a formality. docker commit
+// carries the marker into a skill image stamped with the moment the image was
+// built, so a container booted from such a snapshot reads as idle by however
+// long ago that build was — hours, typically — and would be reclaimed before
+// its first command ran. A container cannot have been idle for longer than it
+// has existed, so its start time is always the honest answer for anything the
+// marker claims happened before it.
 func (s *dockerIdleSweeper) lastActivity(
 	ctx context.Context,
 	summary RemoteSandboxSummary,
 ) time.Time {
+	started := summary.StartedAt.UTC()
+	if started.IsZero() {
+		// Without a start time there is no floor to clamp against, and
+		// trusting the marker alone is what this function exists to avoid.
+		// isIdle reads a zero as "unknown" and keeps the container.
+		return time.Time{}
+	}
 	stat, err := s.client.api.ContainerStatPath(ctx, summary.ID,
 		client.ContainerStatPathOptions{Path: dockerActivityMarker})
-	if err == nil && !stat.Stat.Mtime.IsZero() {
-		marker := stat.Stat.Mtime.UTC()
-		if marker.After(s.now().UTC().Add(dockerActivityClockSkew)) {
-			log.Printf(
-				"[sandbox] docker idle sweep: container %s reports activity at %s, "+
-					"which is in the future; falling back to its start time",
-				summary.ID, marker.Format(time.RFC3339),
-			)
-		} else {
-			return marker
-		}
+	if err != nil || stat.Stat.Mtime.IsZero() {
+		return started
 	}
-	return summary.StartedAt.UTC()
+	marker := stat.Stat.Mtime.UTC()
+	if marker.After(s.now().UTC().Add(dockerActivityClockSkew)) {
+		log.Printf(
+			"[sandbox] docker idle sweep: container %s reports activity at %s, "+
+				"which is in the future; falling back to its start time",
+			summary.ID, marker.Format(time.RFC3339),
+		)
+		return started
+	}
+	if marker.Before(started) {
+		log.Printf(
+			"[sandbox] docker idle sweep: container %s reports activity at %s, "+
+				"older than its own start time %s; using the start time",
+			summary.ID, marker.Format(time.RFC3339), started.Format(time.RFC3339),
+		)
+		return started
+	}
+	return marker
 }
 
 // dockerActivityClockSkew is how far ahead of WeKnora the daemon's clock may

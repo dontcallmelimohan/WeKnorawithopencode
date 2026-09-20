@@ -72,6 +72,52 @@ func TestDockerIdleSweeperFallsBackToCreationTime(t *testing.T) {
 	require.Empty(t, engine.removed)
 }
 
+// A skill image is produced by `docker commit`, which carries the activity
+// marker into the snapshot stamped with the build's own moment. A container
+// booted from that image therefore reads as idle by however long ago the build
+// was, and is reclaimed before its first command lands — so the next skill
+// install fails with "No such container" against a sandbox the sweeper had
+// already deleted.
+func TestDockerIdleSweeperIgnoresMarkerOlderThanTheContainer(t *testing.T) {
+	now := time.Now().UTC()
+	sweeper, engine := newSweeperFixture(t, 30*time.Minute, now, []container.Summary{
+		{
+			ID: "from-image", State: "running", Created: now.Add(-time.Minute).Unix(),
+			Labels: map[string]string{dockerManagedLabel: "true"},
+		},
+	})
+	// Baked in when the image was built, hours before this container existed.
+	engine.statResult[dockerActivityMarker] = container.PathStat{
+		Mtime: now.Add(-19 * time.Hour),
+	}
+
+	reclaimed, err := sweeper.sweep(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, reclaimed,
+		"a container cannot have been idle for longer than it has existed")
+	require.Empty(t, engine.removed)
+}
+
+// The same image, once the container has actually been used: the marker is
+// rewritten by every exec, so it overtakes the start time and decides again.
+func TestDockerIdleSweeperUsesMarkerOnceTheContainerHasRun(t *testing.T) {
+	now := time.Now().UTC()
+	sweeper, engine := newSweeperFixture(t, 30*time.Minute, now, []container.Summary{
+		{
+			ID: "used", State: "running", Created: now.Add(-4 * time.Hour).Unix(),
+			Labels: map[string]string{dockerManagedLabel: "true"},
+		},
+	})
+	engine.statResult[dockerActivityMarker] = container.PathStat{
+		Mtime: now.Add(-2 * time.Hour),
+	}
+
+	reclaimed, err := sweeper.sweep(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, reclaimed)
+	require.Equal(t, []string{"used"}, engine.removed)
+}
+
 // The marker has to be writable by the unprivileged sandbox account, so a
 // script can backdate or postdate it. Postdating is the dangerous direction: a
 // single `touch -d 2099-01-01` would otherwise exempt the container from

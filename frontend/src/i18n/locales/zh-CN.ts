@@ -1325,6 +1325,22 @@ export default {
       script: '脚本',
       instructions: '技能说明'
     },
+    opencodeJob: {
+      summary: '执行结论',
+      rawOutput: '原始输出',
+      steps: '{count} 步',
+      toolCalls: '{count} 次工具调用',
+      waited: '已等待 {count}s',
+      status: {
+        submitted: '已提交',
+        running: '执行中',
+        succeeded: '已完成',
+        failed: '失败',
+        timeout: '超时',
+        killed: '已停止',
+        unknown: '未知状态'
+      }
+    },
     sandboxFiles: {
       found: '找到 {count} 个文件',
       empty: '暂无文件',

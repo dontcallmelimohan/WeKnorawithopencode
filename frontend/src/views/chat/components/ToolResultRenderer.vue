@@ -68,6 +68,12 @@
       :data="toolData as ReadSkillData"
     />
 
+    <OpenCodeJobResult
+      v-else-if="displayType === 'opencode_job'"
+      :data="toolData as Record<string, unknown>"
+      :output="output"
+    />
+
     <!-- Fallback: Display raw output -->
     <div v-else class="fallback-output">
       <div class="fallback-header">
@@ -122,6 +128,7 @@ import ShellExecResult from './tool-results/ShellExecResult.vue';
 import SandboxFilesResult from './tool-results/SandboxFilesResult.vue';
 import WriteSandboxFileResult from './tool-results/WriteSandboxFileResult.vue';
 import ReadSkillResult from './tool-results/ReadSkillResult.vue';
+import OpenCodeJobResult from './tool-results/OpenCodeJobResult.vue';
 
 interface Props {
   displayType?: DisplayType;

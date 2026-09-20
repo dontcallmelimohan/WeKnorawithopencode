@@ -1148,7 +1148,33 @@ const formatToolResultContent = (value: unknown): string => {
 
 const isMcpTool = (toolName?: string | null): boolean => String(toolName || '').startsWith('mcp_');
 
+// opencode 长任务技能（scripts/ocw.py）的 submit/wait/status 输出是一个带 job_id
+// 的 JSON 对象，走专用卡片；`logs` / `result` 等其它子命令以及别的技能脚本仍然按
+// shell_exec 渲染。
+const ocwJobPayload = (event: any): Record<string, any> | null => {
+  const record = (event?.tool_data || {}) as Record<string, unknown>
+  const stdout = typeof record.stdout === 'string' && record.stdout.trim()
+    ? record.stdout
+    : String(event?.output || '')
+  const text = stdout.trim()
+  if (!text.startsWith('{')) return null
+  try {
+    const obj = JSON.parse(text)
+    if (obj && typeof obj === 'object' && typeof obj.job_id === 'string' && obj.job_id) return obj
+  } catch {
+    return null
+  }
+  return null
+}
+
+const isOpencodeJobEvent = (event: any): boolean => ocwJobPayload(event) !== null
+
 const resolveToolDisplayType = (event: any): DisplayType | undefined => {
+  // 后端给 execute_skill_script 统一标了 display_type=shell_exec，所以这个判断必须
+  // 排在 display_type 之前，否则永远走不进 opencode 卡片。
+  if (event?.tool_name === 'execute_skill_script' && isOpencodeJobEvent(event)) {
+    return 'opencode_job'
+  }
   if (event?.display_type) return event.display_type as DisplayType
   if (event?.tool_name === 'shell_exec' || event?.tool_name === 'execute_skill_script') {
     return 'shell_exec'
@@ -1421,6 +1447,9 @@ const eventStream = computed(() => props.session?.agentEventStream || []);
 // Expanded events tracking (for tool calls and thinking events)
 const expandedEvents = ref<Set<string>>(new Set());
 
+// opencode 长任务卡片会被自动展开；用户手动折叠过的 id 记在这里，不再自动弹开。
+const dismissedOpencodeCards = ref<Set<string>>(new Set());
+
 // Track IDs of thinking events that are currently "active" (latest, not yet followed by non-thinking)
 const activeThinkingIds = ref<Set<string>>(new Set());
 // Reactive version number to force template re-evaluation when activeThinkingIds changes
@@ -1463,6 +1492,26 @@ watch(eventStream, (stream) => {
     if (!newActiveIds.has(oldId)) {
       expandedEvents.value.delete(oldId);
     }
+  }
+
+  // opencode 长任务：一个 job 会留下多次快照（submit → wait×N → result），自动展开
+  // 用户不点也能看到它跑到哪一步。优先展开带 progress.timeline 的最新一张——`result`
+  // 那张没有时间轴，让它抢走展开位会白占一大块地方；只有完全没有时间轴时才回退到
+  // 最新那张（比如刚 submit 完）。
+  const latestOpencodeCardByJob = new Map<string, { id: string; hasTimeline: boolean }>();
+  for (const event of stream) {
+    if (!event || event.type !== 'tool_call' || event.tool_name !== 'execute_skill_script') continue;
+    const payload = ocwJobPayload(event);
+    if (!payload || !event.tool_call_id) continue;
+    const jobId = String(payload.job_id);
+    const hasTimeline = Array.isArray(payload.progress?.timeline) && payload.progress.timeline.length > 0;
+    const current = latestOpencodeCardByJob.get(jobId);
+    if (!current || hasTimeline || !current.hasTimeline) {
+      latestOpencodeCardByJob.set(jobId, { id: event.tool_call_id, hasTimeline });
+    }
+  }
+  for (const card of latestOpencodeCardByJob.values()) {
+    if (!dismissedOpencodeCards.value.has(card.id)) expandedEvents.value.add(card.id);
   }
 
   activeThinkingIds.value = newActiveIds;
@@ -2142,8 +2191,10 @@ const toggleIntermediateSteps = () => {
 const toggleEvent = (eventId: string) => {
   if (expandedEvents.value.has(eventId)) {
     expandedEvents.value.delete(eventId);
+    dismissedOpencodeCards.value.add(eventId);
   } else {
     expandedEvents.value.add(eventId);
+    dismissedOpencodeCards.value.delete(eventId);
   }
 };
 

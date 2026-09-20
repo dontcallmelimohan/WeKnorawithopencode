@@ -54,10 +54,19 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// dockerActivityMarker is touched by every exec and read by the idle sweeper.
+// ActivityMarkerPath is touched by every exec and read by the idle sweeper.
 // It lives outside /workspace so a script cannot mistake it for its own data,
 // and outside /tmp so a tmpfs mount cannot hide it.
-const dockerActivityMarker = "/var/lib/weknora-sandbox-activity"
+//
+// Exported because it is not only this package's business: a skill image is
+// produced by `docker commit`, which carries the marker into the snapshot
+// stamped with the build's own moment. Whatever builds an image has to delete
+// it first, or every container booted from that image reads as idle by
+// however long ago the build was — see cleanImageScratchCommand.
+const ActivityMarkerPath = "/var/lib/weknora-sandbox-activity"
+
+// dockerActivityMarker is the name this package uses internally.
+const dockerActivityMarker = ActivityMarkerPath
 
 // dockerSandboxEntrypoint keeps the container alive without running anything —
 // the container is a place to exec into, not a service — and prepares the

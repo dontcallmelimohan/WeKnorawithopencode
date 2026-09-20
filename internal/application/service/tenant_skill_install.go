@@ -1025,6 +1025,17 @@ func cleanImageScratchCommand() string {
 	outputRoot := sandbox.ShellQuote(sandbox.SessionOutputRoot)
 	var b strings.Builder
 	b.WriteString("rm -rf /workspace/* /workspace/.[!.]* || true")
+	// The idle sweeper stamps this marker on every exec and reads its mtime to
+	// decide whether a container has gone unused. `docker commit` carries it
+	// into the snapshot, so a skill image built while the installer was
+	// working ships a marker dated to that build. Every container booted from
+	// such an image then reads as idle by however long ago the image was
+	// built, and the sweeper reclaims it before its first command lands —
+	// which breaks the next install in exactly the way the marker was meant
+	// to prevent. Removing it here is what makes the snapshot start clean.
+	// `|| true` because this runs before the status capture and must not be
+	// able to change the exit code the workspace half decides.
+	fmt.Fprintf(&b, "; rm -f %s || true", sandbox.ShellQuote(sandbox.ActivityMarkerPath))
 	fmt.Fprintf(&b, "; mkdir -p %s %s && chown %s:%s %s %s && chmod 775 %s %s; status=$?",
 		inputRoot, outputRoot,
 		user, user, inputRoot, outputRoot,

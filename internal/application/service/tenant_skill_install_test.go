@@ -285,6 +285,17 @@ func TestCleanImageScratchCommandShape(t *testing.T) {
 	require.Contains(t, cmd, "rm -rf /workspace/* /workspace/.[!.]* || true")
 	require.Contains(t, cmd, "mkdir -p")
 	require.Contains(t, cmd, "status=$?")
+
+	// The activity marker is read by the idle sweeper and must not survive
+	// into the snapshot: committed with the build's own mtime, it would make
+	// every container booted from this image look idle by however long ago
+	// the build was, and the sweeper would reclaim it before its first
+	// command. It also has to run before the status capture — a failure to
+	// unlink it must not be able to fail an install.
+	require.Contains(t, cmd, "rm -f "+sandbox.ActivityMarkerPath)
+	require.Less(t, strings.Index(cmd, "rm -f "+sandbox.ActivityMarkerPath),
+		strings.Index(cmd, "status=$?"),
+		"the marker removal must precede the exit-code capture")
 	require.Contains(t, cmd, "exit $status")
 	require.Contains(t, cmd, "uv cache prune")
 	require.Contains(t, cmd, "npm cache verify")

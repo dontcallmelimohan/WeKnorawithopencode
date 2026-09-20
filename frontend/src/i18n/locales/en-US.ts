@@ -5457,6 +5457,22 @@ export default {
       script: 'script',
       instructions: 'Instructions'
     },
+    opencodeJob: {
+      summary: 'Result',
+      rawOutput: 'Raw output',
+      steps: '{count} steps',
+      toolCalls: '{count} tool calls',
+      waited: 'waited {count}s',
+      status: {
+        submitted: 'Submitted',
+        running: 'Running',
+        succeeded: 'Completed',
+        failed: 'Failed',
+        timeout: 'Timed out',
+        killed: 'Stopped',
+        unknown: 'Unknown'
+      }
+    },
     sandboxFiles: {
       found: 'Found {count} file(s)',
       empty: 'No files',

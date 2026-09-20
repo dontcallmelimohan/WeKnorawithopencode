@@ -1323,6 +1323,22 @@ export default {
       script: 'скрипт',
       instructions: 'Инструкции навыка'
     },
+    opencodeJob: {
+      summary: 'Результат',
+      rawOutput: 'Необработанный вывод',
+      steps: 'шагов: {count}',
+      toolCalls: 'вызовов инструментов: {count}',
+      waited: 'ожидание {count}с',
+      status: {
+        submitted: 'Отправлено',
+        running: 'Выполняется',
+        succeeded: 'Завершено',
+        failed: 'Ошибка',
+        timeout: 'Тайм-аут',
+        killed: 'Остановлено',
+        unknown: 'Неизвестно'
+      }
+    },
     sandboxFiles: {
       found: 'Найдено файлов: {count}',
       empty: 'Нет файлов',

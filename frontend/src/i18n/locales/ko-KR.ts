@@ -1323,6 +1323,22 @@ export default {
       script: '스크립트',
       instructions: '스킬 안내'
     },
+    opencodeJob: {
+      summary: '실행 결과',
+      rawOutput: '원본 출력',
+      steps: '{count}단계',
+      toolCalls: '도구 호출 {count}회',
+      waited: '{count}초 대기함',
+      status: {
+        submitted: '제출됨',
+        running: '실행 중',
+        succeeded: '완료됨',
+        failed: '실패',
+        timeout: '시간 초과',
+        killed: '중지됨',
+        unknown: '알 수 없음'
+      }
+    },
     sandboxFiles: {
       found: '파일 {count}개 발견',
       empty: '파일 없음',
